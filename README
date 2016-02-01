@@ -1,0 +1,27 @@
+(C) 2016 University of Bristol. See LICENSE.txt
+
+=========== OT Extension ==========
+
+Requirements:
+
+ - GCC and CPU supporting PCLMUL, AES-NI, and SSE4.1.
+
+To run the OT extension protocol:
+
+ - Make ot.x
+ - Run ot.x -p 0 and then ot.x -p 1 to run the OT extension between two parties
+ - For a full list of possible options, run ot.x
+ - We have measured 69 seconds on a local link with -n 1000000000 -l 100 -x 50
+
+Further comments:
+
+ - OTExtensionWithMatrix (used by default) is the optimized extension
+   for 128-bit OT. OTExtension is slower but more flexible.
+ - Secure base OT computation is not implemented. If you wish to
+   implement it, do so in BaseOT::exec_base(). Refer to
+   FakeOT::exec_base() for the desired output.
+ - ot-check.x allows to check the output of ot.x.
+ - ot-bitmatrix.x is a unit test for the BitMatrix class.
+ - This has only been tested on Linux.
+ - Parts of the code use a C implementation of AES, which has been
+   removed.

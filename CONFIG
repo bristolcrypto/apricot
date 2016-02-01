@@ -1,0 +1,11 @@
+# (C) 2016 University of Bristol. See LICENSE.txt
+
+OPTIM= -O3
+
+LDLIBS = -lpthread -lrt
+
+CC = g++
+CFLAGS = -g -Wextra -Wall -Wno-non-template-friend $(LIBOPT) $(OPTIM) -pthread -maes -mpclmul -msse4.1 -msse2
+CPPFLAGS = $(CFLAGS)
+LD = g++ 
+
