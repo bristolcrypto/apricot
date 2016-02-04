@@ -2,7 +2,12 @@
 
 OPTIM= -O3
 
-LDLIBS = -lpthread -lrt
+LDLIBS = -lpthread
+
+OS := $(shell uname -s)
+ifeq ($(OS), Linux)
+LDLIBS += -lrt
+endif
 
 CC = g++
 CFLAGS = -g -Wextra -Wall -Wno-non-template-friend $(LIBOPT) $(OPTIM) -pthread -maes -mpclmul -msse4.1 -msse2 -I.
