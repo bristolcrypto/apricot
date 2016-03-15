@@ -13,8 +13,6 @@ COMMON = $(TOOLS) $(NETWORK)
 SIMPLEOT_OBJ = SimpleOT/*.o
 LIBSIMPLEOT = SimpleOT/libsimpleot.a
 
-SIMPLEOT_DIR = ./SimpleOT/
-
 $(LIB): $(COMPLETE) $(OT)
 	$(AR) -crs libSPDZ.a $^
 
