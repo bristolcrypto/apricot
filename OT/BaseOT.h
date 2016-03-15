@@ -10,6 +10,8 @@
 #include "Tools/random.h"
 #include "OT/BitVector.h"
 
+//#define BASE_OT_DEBUG
+
 // currently always assumes BOTH, i.e. do 2 sets of OT symmetrically,
 // use bitwise & to check for role
 enum OT_ROLE

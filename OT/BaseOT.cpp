@@ -8,6 +8,13 @@
 #include <iostream>
 #include <fstream>
 #include <pthread.h>
+
+extern "C"
+{
+    #include "SimpleOT/ot_sender.h"
+    #include "SimpleOT/ot_receiver.h"
+}
+
 using namespace std;
 
 
@@ -72,7 +79,109 @@ void send_if_ot_receiver(const TwoPartyPlayer* P, vector<octetStream>& os, OT_RO
 
 void BaseOT::exec_base()
 {
-  // Implement OT here
+    int i, j, k, len;
+    PRNG G;
+    G.ReSeed();
+    vector<octetStream> os(2);
+    SIMPLEOT_SENDER sender;
+    SIMPLEOT_RECEIVER receiver;
+
+    unsigned char S_pack[ PACKBYTES ];
+    unsigned char Rs_pack[ 2 ][ 4 * PACKBYTES ];
+    unsigned char sender_keys[ 2 ][ 4 ][ HASHBYTES ];
+    unsigned char receiver_keys[ 4 ][ HASHBYTES ];
+    unsigned char cs[ 4 ];
+
+    if (ot_role & SENDER)
+    {
+        sender_genS(&sender, S_pack);
+        os[0].store_bytes(S_pack, sizeof(S_pack));
+    }
+    send_if_ot_sender(P, os, ot_role);
+
+    if (ot_role & RECEIVER)
+    {
+        os[1].get_bytes((octet*) receiver.S_pack, len);
+        if (len != HASHBYTES)
+        {
+            cerr << "Received invalid length in base OT\n";
+            exit(1);
+        }
+        receiver_procS(&receiver);
+        receiver_maketable(&receiver);
+    }
+
+    for (i = 0; i < nOT; i += 4)
+    {
+        if (ot_role & RECEIVER)
+        {
+            for (j = 0; j < 4; j++)
+            {
+                receiver_inputs[i + j] = G.get_uchar()&1;
+                cs[j] = receiver_inputs[i + j];
+            }
+            receiver_rsgen(&receiver, Rs_pack[0], cs);
+            os[0].reset_write_head();
+            os[0].store_bytes(Rs_pack[0], sizeof(Rs_pack[0]));
+            receiver_keygen(&receiver, receiver_keys);
+        }
+        send_if_ot_receiver(P, os, ot_role);
+        
+        if (ot_role & SENDER)
+        {
+            os[1].get_bytes((octet*) Rs_pack[1], len);
+            if (len != sizeof(Rs_pack[1]))
+            {
+                cerr << "Received invalid length in base OT\n";
+                exit(1);
+            }
+            sender_keygen(&sender, Rs_pack[1], sender_keys);
+
+            // Copy 128 bits of keys to sender_inputs
+            for (j = 0; j < 4; j++)
+            {
+                for (k = 0; k < AES_BLK_SIZE; k++)
+                {
+                    sender_inputs[i + j][0].set_byte(k, sender_keys[0][j][k]);
+                    sender_inputs[i + j][1].set_byte(k, sender_keys[1][j][k]);
+                }
+            }
+        }
+        
+        if (ot_role & RECEIVER)
+        {
+            // Copy keys to receiver_outputs
+            for (j = 0; j < 4; j++)
+            {
+                for (k = 0; k < AES_BLK_SIZE; k++)
+                {
+                    receiver_outputs[i + j].set_byte(k, receiver_keys[j][k]);
+                }
+            }
+        }
+        #ifdef BASE_OT_DEBUG
+        for (j = 0; j < 4; j++)
+        {
+            if (ot_role & SENDER)
+            {
+                printf("%4d-th sender keys:", i+j);
+                for (k = 0; k < HASHBYTES; k++) printf("%.2X", sender_keys[0][j][k]);
+                printf(" ");
+                for (k = 0; k < HASHBYTES; k++) printf("%.2X", sender_keys[1][j][k]);
+                printf("\n");
+            }
+            if (ot_role & RECEIVER)
+            {
+                printf("%4d-th receiver key:", i+j);
+                for (k = 0; k < HASHBYTES; k++) printf("%.2X", receiver_keys[j][k]);
+                printf("\n");
+            }
+        }
+
+        printf("\n");
+        #endif
+    }
+    set_seeds();
 }
 
 void BaseOT::set_seeds()
@@ -152,6 +261,7 @@ void BaseOT::check()
         os[0].reset_write_head();
         os[1].reset_write_head();
     }
+    cout << "Base OT Check OK\n";
 }
 
 
