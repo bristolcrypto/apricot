@@ -82,10 +82,8 @@ void CBC_MAC::Update(const octet* data,int length)
         __m128i tmp =  _mm_loadu_si128 ((__m128i*)state);
         while ((pos+AES_BLK_SIZE)<=length)
         {
-          // manually convert octet in data to __m128i
-          // as simple casting causes overflow
-          __m128i tmp2 = _mm_cvtsi32_si128 ((int)(data[pos]));
-          tmp = _mm_xor_si128 (tmp, tmp2);// ( (__m128i*)(data+pos) )[0]);
+          __m128i tmp2 = _mm_loadu_si128 ((__m128i*)(data+pos));
+          tmp = _mm_xor_si128 (tmp, tmp2);
           tmp = aes_encrypt(tmp,KeySchedule);
           pos+=AES_BLK_SIZE;
         }
