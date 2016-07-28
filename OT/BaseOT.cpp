@@ -2,18 +2,14 @@
 
 #include "OT/BaseOT.h"
 #include "Tools/random.h"
-#include "Tools/CBC-MAC.h"
 
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
 #include <pthread.h>
 
-extern "C"
-{
-    #include "SimpleOT/ot_sender.h"
-    #include "SimpleOT/ot_receiver.h"
-}
+#include "SimpleOT/ot_sender.h"
+#include "SimpleOT/ot_receiver.h"
 
 using namespace std;
 
@@ -41,17 +37,14 @@ void send_if_ot_sender(const TwoPartyPlayer* P, vector<octetStream>& os, OT_ROLE
 {
     if (role == SENDER)
     {
-        //cout << "sending as sender\n";
         P->send(os[0]);
     }
     else if (role == RECEIVER)
     {
-        //cout << "receiving as receiver\n";
         P->receive(os[1]);
     }
     else
     {
-        //cout << "receiving as both\n";
         // both sender + receiver
         P->send_receive_player(os);
     }
@@ -61,17 +54,14 @@ void send_if_ot_receiver(const TwoPartyPlayer* P, vector<octetStream>& os, OT_RO
 {
     if (role == RECEIVER)
     {
-        //cout << "sending as receiver\n";
         P->send(os[0]);
     }
     else if (role == SENDER)
     {
-        //cout << "receiving as sender\n";
         P->receive(os[1]);
     }
     else
     {
-        //cout << "sending as both\n";
         // both
         P->send_receive_player(os);
     }
@@ -199,6 +189,7 @@ void BaseOT::set_seeds()
             G_receiver[i].SetSeed(receiver_outputs[i].get_ptr());
         }
     }
+    extend_length();
 }
 
 void BaseOT::extend_length()
