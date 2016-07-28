@@ -162,9 +162,9 @@ int main(int argc, const char** argv)
         0, // Required?
         0, // Number of args expected.
         0, // Delimiter if expecting multiple args.
-        "Real base OT.", // Help description.
-        "-r", // Flag token.
-        "--real" // Flag token.
+        "Use fake base OTs.", // Help description.
+        "-f", // Flag token.
+        "--fake" // Flag token.
     );
 
     opt.parse(argc, argv);
@@ -248,11 +248,16 @@ int main(int argc, const char** argv)
     BaseOT baseOT = BaseOT(nbase, 128, 1 - my_num, P, INV_ROLE(ot_role));
     FakeOT fakeOT = FakeOT(nbase, 128, 1 - my_num, P, INV_ROLE(ot_role));
     BaseOT* bot_;
-    if (opt.isSet("-r"))
-        bot_ = &baseOT;
-    else
+    if (opt.isSet("-f"))
+    {
+        cout << "WARNING: using fake base OTs, not secure\n";
         bot_ = &fakeOT;
-    cout << "real mode " << opt.isSet("-r") << endl;
+    }
+    else
+    {
+        cout << "Using Chou-Orlandi base OTs\n";
+        bot_ = &baseOT;
+    }
     BaseOT& bot = *bot_;
     bot.exec_base();
     gettimeofday(&baseOTend, NULL);
