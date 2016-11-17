@@ -10,9 +10,24 @@
 
 int main()
 {
-    BitMatrix bm(128000);
     PRNG G;
     G.ReSeed();
+
+    square128 square;
+    memset(&square, 0, sizeof(square));
+    for (int i = 0; i < 16; i++)
+        for (int j = 0; j < 16; j++)
+            square.bytes[i][j] = j * 16 + i;
+    square128 tmp;
+    tmp = square;
+    square.transpose();
+    square.check_transpose(tmp);
+    square.randomize(G);
+    tmp = square;
+    square.transpose();
+    square.check_transpose(tmp);
+
+    BitMatrix bm(128000);
     bm.randomize(G);
     timeval start, stop;
     gettimeofday(&start, NULL);
@@ -69,16 +84,5 @@ int main()
             if (!_mm_test_all_zeros(a.rows[i], c.rows[i]))
                 cout << "Error with conditional XOR, case 0";
         }
-
-    PRNG G2 = G;
-    BitMatrix bm1(128000), bm2(128000);
-    bm1.randomize(0, G);
-    BitMatrixSlice slice(bm2, 0, bm2.squares.size());
-    slice.randomize(0, G2);
-    if (bm1 != bm2)
-    {
-        cout << "Error with slicing" << endl;
-        bm.print_side_by_side(copy);
-    }
 }
 

@@ -23,16 +23,24 @@ using namespace std;
 
 #define OTEXT_TIMER
 //#define OTEXT_DEBUG
+//#define VERBOSE
 
-
-class OTExtension
+class OTExtensionBaseBase
 {
 public:
     vector< vector<BitVector> > senderOutput;
     vector<BitVector> receiverOutput;
     map<string,long long> times;
 
-    OTExtension(int nbaseOTs, int baseLength,
+    virtual ~OTExtensionBaseBase() {}
+    virtual void transfer(int nOTs, const BitVector& receiverInput) = 0;
+};
+
+template <class D>
+class OTExtensionBase : public OTExtensionBaseBase
+{
+public:
+    OTExtensionBase(int nbaseOTs, int baseLength,
                 int nloops, int nsubloops,
                 TwoPartyPlayer* player,
                 BitVector& baseReceiverInput,
@@ -96,8 +104,6 @@ public:
         }
     }
 
-    virtual void transfer(int nOTs, const BitVector& receiverInput);
-
 protected:
     bool passive_only;
     int nbaseOTs, baseLength, nloops, nsubloops;
@@ -113,10 +119,27 @@ protected:
     void check_iteration(__m128i delta, __m128i q, __m128i q2,
         __m128i t, __m128i t2, __m128i x);
 
+};
+
+class OTExtension : public OTExtensionBase<OTExtension>
+{
+protected:
     void hash_outputs(int nOTs, vector<BitVector>& receiverOutput);
 
-    virtual octet* get_receiver_output(int i);
-    virtual octet* get_sender_output(int choice, int i);
+public:
+    void transfer(int nOTs, const BitVector& receiverInput);
+
+    octet* get_receiver_output(int i);
+    octet* get_sender_output(int choice, int i);
+
+    struct block128 {
+        vector<BitVector>& parent;
+        int base;
+        block128(vector<BitVector>& parent, int i) : parent(parent), base(128 * i) {}
+        __m128i operator[](int j) { return _mm_loadu_si128((__m128i*)parent[base + j].get_ptr()); }
+    };
+    block128 get_receiver_output_128(int i) { return block128(receiverOutput, i); }
+    block128 get_sender_output_128(int choice, int i) { return block128(senderOutput[choice], i); }
 };
 
 #endif

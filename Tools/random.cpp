@@ -40,7 +40,7 @@ void PRNG::InitSeed()
         { aes_schedule(KeySchedule,seed); }
      memset(state,0,RAND_SIZE*sizeof(octet));
      for (int i = 0; i < PIPELINES; i++)
-         state[i*AES_BLK_SIZE] = i;
+         state[i] = i;
   #else
      memcpy(state,seed,SEED_SIZE*sizeof(octet));
   #endif
@@ -63,8 +63,8 @@ void PRNG::print_state() const
     }
   cout << "\t";
   for (i=0; i<SEED_SIZE; i++)
-    { if (state[i]<10) { cout << "0"; }
-      cout << hex << (int) state[i];
+    { if (((octet*)state)[i]<10) { cout << "0"; }
+      cout << hex << (int) ((octet*)state)[i];
     }
   cout << " " << dec << cnt << " : ";
 }
@@ -80,7 +80,7 @@ void PRNG::hash()
     blk_SHA1_Final(random,&ctx);
   #else
     if (useC)
-       { aes_encrypt(random,state,KeyScheduleC); }
+       { aes_encrypt(random,(octet*)state,KeyScheduleC); }
     else
        { ecb_aes_128_encrypt<PIPELINES>((__m128i*)random,(__m128i*)state,KeySchedule); }
   #endif
@@ -94,12 +94,7 @@ void PRNG::next()
 {
   // Increment state
   for (int i = 0; i < PIPELINES; i++)
-    {
-      int64_t* s = (int64_t*)&state[i*AES_BLK_SIZE];
-      s[0] += PIPELINES;
-      if (s[0] == 0)
-          s[1]++;
-    }
+    state[i] += PIPELINES;
   hash();
 }
 
@@ -145,7 +140,7 @@ __m128i PRNG::get_doubleword()
 {
     if (cnt > RAND_SIZE - 16)
         next();
-    __m128i ans = _mm_loadu_si128((__m128i*)&random[cnt]);
+    __m128i ans = _mm_load_si128((__m128i*)&random[cnt]);
     cnt += 16;
     return ans;
 }

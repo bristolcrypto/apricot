@@ -32,7 +32,7 @@
 class PRNG
 {
    octet seed[SEED_SIZE]; 
-   octet state[RAND_SIZE] __attribute__((aligned (16)));
+   __int128 state[PIPELINES] __attribute__((aligned (16)));
    octet random[RAND_SIZE] __attribute__((aligned (16)));
 
    #ifdef USE_AES
@@ -47,7 +47,6 @@ class PRNG
    int cnt;    // How many bytes of the current random value have been used
 
    void hash(); // Hashes state to random and sets cnt=0
-   void next();
 
    public:
 
@@ -63,6 +62,8 @@ class PRNG
    void SetSeed(unsigned char*);
    void InitSeed();
    
+   void next();
+
    double get_double();
    unsigned char get_uchar();
    unsigned int get_uint();
@@ -73,6 +74,7 @@ class PRNG
        return a;
      }
    __m128i get_doubleword();
+   __m128i get_doubleword_no_check() { return _mm_load_si128((__m128i*)&random[cnt]); cnt += 16; }
    void get_octetStream(octetStream& ans,int len);
    void get_octets(octet* ans, int len);
 

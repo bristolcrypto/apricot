@@ -1,6 +1,7 @@
 // (C) 2016 University of Bristol. See LICENSE.txt
 
 #include "OTExtension.h"
+#include "OTExtensionWithMatrix.h"
 
 #include "OT/Tools.h"
 #include "Tools/aes.h"
@@ -342,14 +343,18 @@ void OTExtension::transfer(int nOTs,
         }
 #ifdef OTEXT_TIMER
         gettimeofday(&commst2, NULL);
+#ifdef VERBOSE
         double commstime = timeval_diff(&commst1, &commst2);
         cout << "\t\tCommunication took time " << commstime/1000000 << endl << flush;
+#endif
         times["Communication"] += timeval_diff(&commst1, &commst2);
 #endif
 
         // transpose t0[i] onto receiverOutput and tmp (q[i]) onto senderOutput[i][0]
 
+#ifdef VERBOSE
         cout << "Starting matrix transpose\n" << flush << endl;
+#endif
 #ifdef OTEXT_TIMER
         timeval transt1, transt2;
         gettimeofday(&transt1, NULL);
@@ -372,8 +377,10 @@ void OTExtension::transfer(int nOTs,
 
 #ifdef OTEXT_TIMER
         gettimeofday(&transt2, NULL);
+#ifdef VERBOSE
         double transtime = timeval_diff(&transt1, &transt2);
         cout << "\t\tMatrix transpose took time " << transtime/1000000 << endl << flush;
+#endif
         times["Matrix transpose"] += timeval_diff(&transt1, &transt2);
 #endif
 
@@ -417,7 +424,6 @@ void OTExtension::transfer(int nOTs,
         cout << "Correlated OTs all OK\n";
 #endif
 
-        double elapsed;
         // correlation check
         if (!passive_only)
         {
@@ -428,17 +434,21 @@ void OTExtension::transfer(int nOTs,
             check_correlation(nOTs, newReceiverInput);
 #ifdef OTEXT_TIMER
             gettimeofday(&endv, NULL);
-            elapsed = timeval_diff(&startv, &endv);
+#ifdef VERBOSE
+            double elapsed = timeval_diff(&startv, &endv);
             cout << "\t\tTotal correlation check time: " << elapsed/1000000 << endl << flush;
+#endif
             times["Total correlation check"] += timeval_diff(&startv, &endv);
 #endif
         }
 
         hash_outputs(nOTs, receiverOutput);
 #ifdef OTEXT_TIMER
+#ifdef VERBOSE
         gettimeofday(&totalendv, NULL);
-        elapsed = timeval_diff(&totalstartv, &totalendv);
+        double elapsed = timeval_diff(&totalstartv, &totalendv);
         cout << "\t\tTotal thread time: " << elapsed/1000000 << endl << flush;
+#endif
 #endif
 
 #ifdef OTEXT_DEBUG
@@ -500,7 +510,9 @@ void OTExtension::transfer(int nOTs,
  */
 void OTExtension::hash_outputs(int nOTs, vector<BitVector>& receiverOutput)
 {
+#ifdef VERBOSE
     cout << "Hashing... " << flush;
+#endif
     octetStream os, h_os(HASH_SIZE);
     BitVector tmp(nbaseOTs);
     RO ro;
@@ -553,11 +565,15 @@ void OTExtension::hash_outputs(int nOTs, vector<BitVector>& receiverOutput)
             }
         }
     }
+#ifdef VERBOSE
     cout << "done.\n";
+#endif
 #ifdef OTEXT_TIMER
     gettimeofday(&endv, NULL);
+#ifdef VERBOSE
     double elapsed = timeval_diff(&startv, &endv);
     cout << "\t\tOT ext hashing took time " << elapsed/1000000 << endl << flush;
+#endif
     times["Hashing"] += timeval_diff(&startv, &endv);
 #endif
 }
@@ -638,10 +654,13 @@ void test_mul()
 
 
 
-void OTExtension::check_correlation(int nOTs,
+template <class D>
+void OTExtensionBase<D>::check_correlation(int nOTs,
     const BitVector& receiverInput)
 {
+#ifdef VERBOSE
     cout << "\tStarting correlation check\n" << flush;
+#endif
 #ifdef OTEXT_TIMER
     timeval startv, endv;
     gettimeofday(&startv, NULL);
@@ -651,13 +670,21 @@ void OTExtension::check_correlation(int nOTs,
         cerr << "Correlation check not implemented for length != 128\n";
         throw not_implemented();
     }
+    if (nOTs % 128 != 0)
+    {
+        cerr << "Correlation check not implemented for number of OTs not divisible by 128\n";
+        throw not_implemented();
+    }
+
     PRNG G;
     octet* seed = new octet[SEED_SIZE];
     random_seed_commit(seed, *player, SEED_SIZE);
 #ifdef OTEXT_TIMER
     gettimeofday(&endv, NULL);
+#ifdef VERBOSE
     double elapsed = timeval_diff(&startv, &endv);
     cout << "\t\tCommitment for seed took time " << elapsed/1000000 << endl << flush;
+#endif
     times["Commitment for seed"] += timeval_diff(&startv, &endv);
     gettimeofday(&startv, NULL);
 #endif
@@ -682,30 +709,42 @@ void OTExtension::check_correlation(int nOTs,
     __m128i chii, ti, qi, ti2, qi2;
     x128i = _mm_setzero_si128();
 
-    for (int i = 0; i < nOTs; i++)
+    for (int i = 0; i < nOTs / 128; i++)
     {
-//        chi.randomize(G);
-//        chii = _mm_load_si128((__m128i*)&(chi.get_ptr()[0]));
-        chii = G.get_doubleword();
-
-        if (ot_role & RECEIVER)
+        typename D::block128 receiver_output = ((D*)this)->get_receiver_output_128(i);
+        typename D::block128 sender_output = ((D*)this)->get_sender_output_128(0, i);
+        for (int j = 0; j < 128 / PIPELINES; j++)
         {
-            if (receiverInput.get_bit(i) == 1)
+            G.next();
+            octet recv_input_bits = receiverInput.get_byte((128 * i + PIPELINES * j) / 8)
+                    >> (j % (PIPELINES / 8));
+            for (int k = 0; k < PIPELINES; k++)
             {
-                x128i = _mm_xor_si128(x128i, chii);
+                //        chi.randomize(G);
+                //        chii = _mm_load_si128((__m128i*)&(chi.get_ptr()[0]));
+                chii = G.get_doubleword_no_check();
+                int sub_index = j * PIPELINES + k;
+
+                if (ot_role & RECEIVER)
+                {
+                    if (((recv_input_bits >> k) & 1) == 1)
+                    {
+                        x128i = _mm_xor_si128(x128i, chii);
+                    }
+                    ti = receiver_output[sub_index];
+                    // multiply over polynomial ring to avoid reduction
+                    mul128(ti, chii, &ti, &ti2);
+                    t = _mm_xor_si128(t, ti);
+                    t2 = _mm_xor_si128(t2, ti2);
+                }
+                if (ot_role & SENDER)
+                {
+                    qi = sender_output[sub_index];
+                    mul128(qi, chii, &qi, &qi2);
+                    q = _mm_xor_si128(q, qi);
+                    q2 = _mm_xor_si128(q2, qi2);
+                }
             }
-            ti = _mm_loadu_si128((__m128i*)get_receiver_output(i));
-            // multiply over polynomial ring to avoid reduction
-            mul128(ti, chii, &ti, &ti2);
-            t = _mm_xor_si128(t, ti);
-            t2 = _mm_xor_si128(t2, ti2);
-        }
-        if (ot_role & SENDER)
-        {
-            qi = _mm_loadu_si128((__m128i*)(get_sender_output(0, i)));
-            mul128(qi, chii, &qi, &qi2);
-            q = _mm_xor_si128(q, qi);
-            q2 = _mm_xor_si128(q2, qi2);
         }
     }
 #ifdef OTEXT_DEBUG
@@ -720,13 +759,16 @@ void OTExtension::check_correlation(int nOTs,
     check_iteration(Delta, q, q2, t, t2, x128i);
 #ifdef OTEXT_TIMER
     gettimeofday(&endv, NULL);
+#ifdef VERBOSE
     elapsed = timeval_diff(&startv, &endv);
     cout << "\t\tChecking correlation took time " << elapsed/1000000 << endl << flush;
+#endif
     times["Checking correlation"] += timeval_diff(&startv, &endv);
 #endif
 }
 
-void OTExtension::check_iteration(__m128i delta, __m128i q, __m128i q2,
+template <class D>
+void OTExtensionBase<D>::check_iteration(__m128i delta, __m128i q, __m128i q2,
     __m128i t, __m128i t2, __m128i x)
 {
     vector<octetStream> os(2);
@@ -754,7 +796,9 @@ void OTExtension::check_iteration(__m128i delta, __m128i q, __m128i q2,
 
         if (eq_m128i(tmp1, received_t) && eq_m128i(tmp2, received_t2))
         {
+#ifdef VERBOSE
             cout << "\tCheck passed\n";
+#endif
         }
         else
         {
@@ -777,3 +821,5 @@ octet* OTExtension::get_sender_output(int choice, int i)
 {
     return senderOutput[choice][i].get_ptr();
 }
+
+template class OTExtensionBase<OTExtensionWithMatrix>;

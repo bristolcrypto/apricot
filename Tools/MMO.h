@@ -20,4 +20,13 @@ public:
     void outputOneBlock(octet* output);
 };
 
+
+inline void MMO::hashOneBlock(octet* output, octet* input)
+{
+    __m128i in = _mm_loadu_si128((__m128i*)input);
+    __m128i ct = aes_encrypt(in, IV);
+//    __m128i out = ct ^ in;
+    _mm_storeu_si128((__m128i*)output, ct);
+}
+
 #endif /* TOOLS_MMO_H_ */

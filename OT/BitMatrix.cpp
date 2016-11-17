@@ -11,6 +11,9 @@ union matrix16x8
     __m128i whole;
     octet rows[16];
 
+    matrix16x8() : whole(_mm_setzero_si128()) {}
+    matrix16x8(__m128i x) { whole = x; }
+
     bool get_bit(int x, int y)
     { return (rows[x] >> y) & 1; }
 
@@ -70,6 +73,9 @@ union matrix32x8
     __m256i whole;
     octet rows[32];
 
+    matrix32x8() : whole(_mm256_setzero_si256()) {}
+    matrix32x8(__m256i x) { whole = x; }
+
     void input(square128& input, int x, int y);
     void transpose(square128& output, int x, int y);
 };
@@ -123,8 +129,14 @@ typedef square16 subsquare;
 #define N_SUBSQUARES 8
 #endif
 
+// hypercube permutation
+const int perm[] = { 0, 8, 4, 0xc, 2, 0xa, 6, 0xe, 1, 9, 5, 0xd, 3, 0xb, 7, 0xf };
+const int perm2[] = { 0, 4, 2, 6, 1, 5, 3, 7, 8, 0xc, 0xa, 0xe, 9, 0xd, 0xb, 0xf };
+
+__attribute__((optimize("unroll-loops")))
 void square128::transpose()
 {
+#ifdef USE_SUBSQUARES
     for (int j = 0; j < N_SUBSQUARES; j++)
         for (int k = 0; k < j; k++)
         {
@@ -141,6 +153,88 @@ void square128::transpose()
         a.input(*this, j, j);
         a.transpose(*this, j, j);
     }
+#else
+#define EIGHTTOSIXTYFOUR X(8) X(16) X(32) X(64)
+#define X(I) { \
+        const int J = I / 4; \
+        for (int i = 0; i < 16 / J; i++) \
+        { \
+            for (int j = 0; j < J / 2; j++) \
+            { \
+                int a = base + J * i + j; \
+                int b = a + J/2; \
+                __m128i tmp = _mm_unpacklo_epi##I(rows[a], rows[b]); \
+                rows[b] = _mm_unpackhi_epi##I(rows[a], rows[b]); \
+                rows[a] = tmp; \
+            } \
+        } \
+    }
+#ifdef __AVX2__
+#define SIXTEENTOSIXTYFOUR Y(16) Y(32) Y(64)
+#define Y(I) { \
+        const int J = I / 8; \
+        for (int i = 0; i < 16 / J; i++) \
+        { \
+            for (int j = 0; j < J / 2; j++) \
+            { \
+                int a = base + J * i + j; \
+                int b = a + J/2; \
+                __m256i tmp = _mm256_unpacklo_epi##I(doublerows[a], doublerows[b]); \
+                doublerows[b] = _mm256_unpackhi_epi##I(doublerows[a], doublerows[b]); \
+                doublerows[a] = tmp; \
+            } \
+        } \
+    }
+
+    square128 tmp;
+    for (int k = 0; k < 4; k++)
+    {
+        int base = k * 16 * 2;
+        X(8)
+        base += 16;
+        X(8)
+        base = k * 16;
+        SIXTEENTOSIXTYFOUR
+        for (int i = 0; i < 8; i++)
+        {
+            int a = base + i;
+            int b = a + 8;
+            __m128i tmp = rows[2 * b];
+            rows[2 * b] = rows[2 * a + 1];
+            rows[2 * a + 1] = tmp;
+        }
+        for (int i = 0; i < 16; i++)
+        {
+            int j = perm2[i];
+            tmp.doublerows[base + i] = doublerows[base + j];
+        }
+    }
+
+    for (int i = 0; i < 16; i++)
+    {
+        for (int k = 0; k < 4; k++)
+            matrix32x8(tmp.doublerows[k * 16 + i]).transpose(*this, i, k);
+    }
+#else // __AVX2__
+    square128 tmp;
+    for (int k = 0; k < 8; k++)
+    {
+        int base = k * 16;
+        EIGHTTOSIXTYFOUR
+        for (int i = 0; i < 16; i++)
+        {
+            int j = perm[i];
+            tmp.rows[base + i] = rows[base + j];
+        }
+    }
+
+    for (int i = 0; i < 16; i++)
+    {
+        for (int k = 0; k < 8; k++)
+            matrix16x8(tmp.rows[k * 16 + i]).transpose(*this, i, k);
+    }
+#endif // __AVX2__
+#endif // __USE_SUBSQUARES__
 }
 
 void square128::randomize(PRNG& G)
@@ -162,8 +256,7 @@ void square128::conditional_xor(BitVector& conditions, square128& other)
 
 void square128::hash_row_wise(MMO& mmo, square128& input)
 {
-    for (int i = 0; i < 128; i++)
-        mmo.hashOneBlock((octet*)&rows[i], (octet*)&input.rows[i]);
+    mmo.hashBlockWise<128>((octet*)rows, (octet*)input.rows);
 }
 
 void square128::check_transpose(square128& dual, int i, int k)
@@ -174,9 +267,17 @@ void square128::check_transpose(square128& dual, int i, int k)
             {
                 cout << "Error in 16x16 square (" << i << "," << k << ")" << endl;
                 print(i, k);
+                cout << "dual" << endl;
                 dual.print(i, k);
                 exit(1);
             }
+}
+
+void square128::check_transpose(square128& dual)
+{
+    for (int i = 0; i < 8; i++)
+        for (int k = 0; k < 8; k++)
+            check_transpose(dual, i, k);
 }
 
 void square16::print()
@@ -212,6 +313,31 @@ void square128::print()
             cout << get_bit(i, j);
         cout << endl;
     }
+}
+
+void square128::print_octets()
+{
+    for (int i = 0; i < 128; i++)
+    {
+        for (int j = 0; j < 16; j++)
+            cout << hex << (int)bytes[i][j] << " ";
+        cout << endl;
+    }
+    cout << dec;
+}
+
+void square128::print_doublerows()
+{
+    for (int i = 0; i < 64; i++)
+    {
+        for (int j = 0; j < 32; j++)
+        {
+            cout.width(2);
+            cout << hex << (int)bytes[2*i+j/16][j%16] << " ";
+        }
+        cout << endl;
+    }
+    cout << dec;
 }
 
 void square128::set_zero()
@@ -423,8 +549,16 @@ BitMatrixSlice& BitMatrixSlice::operator^=(BitVector& other)
 
 void BitMatrixSlice::randomize(int row, PRNG& G)
 {
-    for (size_t i = start; i < end; i++)
-        bm.squares[i].randomize(row, G);
+    const int block_size = RAND_SIZE / sizeof(bm.squares[0].rows[0]);
+    auto iSquare = bm.squares.begin() + start;
+    for ( ; iSquare < bm.squares.end() - block_size; )
+    {
+        G.next();
+        for (int j = 0; j < block_size; j++)
+            (iSquare++)->rows[row] = G.get_doubleword_no_check();
+    }
+    for ( ; iSquare < bm.squares.end(); iSquare++)
+        iSquare->randomize(row, G);
 }
 
 void BitMatrixSlice::conditional_xor(BitVector& conditions, BitMatrix& other)

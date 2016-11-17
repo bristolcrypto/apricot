@@ -27,7 +27,7 @@ class OT_thread_info
     int thread_num;
     bool stop;
     int other_player_num;
-    OTExtension* ot_ext;
+    OTExtensionBaseBase* ot_ext;
     int nOTs, nbase;
     BitVector receiverInput;
 };
@@ -305,6 +305,10 @@ int main(int argc, const char** argv)
     vector<pthread_t> threads(nthreads);
     timeval OTextstart, OTextend;
     gettimeofday(&OTextstart, NULL);
+#ifndef __MACH__
+    timespec start, end;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+#endif
 
     // copy base inputs/outputs for each thread
     vector<BitVector> base_receiver_input_copy(nthreads);
@@ -363,6 +367,10 @@ int main(int argc, const char** argv)
     }
 
     gettimeofday(&OTextend, NULL);
+#ifndef __MACH__
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
+    cout << "Processor time: " << double(timespec_diff(&start, &end)) / 1e9 << endl;
+#endif
     double totaltime = timeval_diff(&OTextstart, &OTextend);
     cout << "Time for OTExt threads (" << role_to_str(ot_role) << "): " << totaltime/1000000 << endl << flush;
 

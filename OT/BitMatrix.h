@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <emmintrin.h>
+#include <immintrin.h>
 
 #include "BitVector.h"
 #include "Tools/random.h"
@@ -13,6 +14,9 @@
 using namespace std;
 
 union square128 {
+#ifdef __AVX2__
+    __m256i doublerows[64];
+#endif
     __m128i rows[128];
     octet bytes[128][16];
     int16_t doublebytes[128][8];
@@ -35,8 +39,11 @@ union square128 {
     void hash_row_wise(MMO& mmo, square128& input);
 
     void check_transpose(square128& dual, int i, int k);
+    void check_transpose(square128& dual);
     void print(int i, int k);
     void print();
+    void print_octets();
+    void print_doublerows();
 
     // Pack and unpack in native format
     //   i.e. Dont care about conversion to human readable form
@@ -44,12 +51,43 @@ union square128 {
     void unpack(octetStream& o);
 };
 
+// allocator to counter GCC bug
+template <typename _Tp, int ALIGN>
+class aligned_allocator : public std::allocator<_Tp>
+{
+public:
+    typedef size_t     size_type;
+    typedef ptrdiff_t  difference_type;
+    typedef _Tp*       pointer;
+    typedef const _Tp* const_pointer;
+    typedef _Tp&       reference;
+    typedef const _Tp& const_reference;
+    typedef _Tp        value_type;
+
+    template<typename _Tp1>
+    struct rebind
+    { typedef aligned_allocator<_Tp1, ALIGN> other; };
+
+    _Tp*
+    allocate(size_t __n, const void* = 0)
+    {
+        if (__n > this->max_size())
+            std::__throw_bad_alloc();
+
+        _Tp* res = 0;
+        posix_memalign((void**)&res, ALIGN, __n * sizeof(_Tp));
+        if (res == 0)
+            std::__throw_bad_alloc();
+        return res;
+    }
+};
+
 class BitMatrixSlice;
 
 class BitMatrix
 {
 public:
-    vector<square128> squares;
+    vector< square128, aligned_allocator<square128, 32> > squares;
 
     BitMatrix() {}
     BitMatrix(int length);
